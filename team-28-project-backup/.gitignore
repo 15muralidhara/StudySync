@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+venv/
+.env
+
+# Build
+dist/
+build/
+.expo/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+*.log
+
+# Testing
+coverage/
+
+# Misc
+*.swp
+*.swo
