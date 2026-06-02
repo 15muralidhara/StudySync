@@ -1,4 +1,6 @@
 .qodo
+__pycache__/
+*.pyc
 
 team-28-project/credentials.json
 
