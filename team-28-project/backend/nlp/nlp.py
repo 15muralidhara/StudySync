@@ -26,7 +26,7 @@ class TaskExtractor:
     def extract_from_text(self, text):
         """
         Extract structured task information from natural language text.
-        Returns a dict with task, participants, date, time, locations.
+        Returns a dict with task, participants, date, time, locations, field_confidence.
         """
         extracted = {
             "task": None,
@@ -34,7 +34,14 @@ class TaskExtractor:
             "date": None,
             "time": None,
             "end_time": None,
-            "locations": []
+            "locations": [],
+            "field_confidence": {
+                "task": 0.0,
+                "date": 0.0,
+                "time": 0.0,
+                "participants": 0.0,
+                "locations": 0.0,
+            }
         }
         
         # Process the text with spaCy
@@ -42,25 +49,28 @@ class TaskExtractor:
         
         # Step 1: Extract participants first - crucial to do this before locations
         self._extract_participants(doc, extracted)
-        
+
         # Step 2: Extract dates and times
         self._extract_date_time(doc.text, extracted)
-        
+
         # Step 3: Extract locations (avoiding words already classified)
         self._extract_locations(doc, extracted)
-        
+
         # Final pass: Check for capitalized names after "with" - these are almost always people, not locations
         self._check_with_preposition(doc, extracted)
-        
+
         # Extract task information in a general manner
         self._extract_task(doc, text, extracted)
-        
+
         # Simplify the task description (cleanup and capitalize)
         self._simplify_task(doc, text, extracted)
 
         # Clean task from extracted entities and connecting words
         self._clean_task_from_entities(doc, extracted)
-        
+
+        # Compute per-field confidence scores
+        self._compute_confidence(doc, extracted)
+
         return extracted
     
     def _extract_participants(self, doc, extracted):
@@ -476,6 +486,75 @@ class TaskExtractor:
                         extracted["locations"].remove(potential_name)
                         if potential_name not in extracted["participants"]:
                             extracted["participants"].append(potential_name)
+
+
+    def _compute_confidence(self, doc, extracted):
+        """
+        Assign a confidence score (0.0–1.0) per field based on how it was extracted.
+
+        Rules:
+          task        - 0.9 if a verb+object found; 0.5 if verb-only; 0.2 if full-text fallback
+          date        - 0.9 if explicit day/keyword matched; 0.0 if not found
+          time        - 0.9 if AM/PM explicit; 0.7 if noon/midnight keyword; 0.4 if dateparser fallback
+          participants- 0.9 if spaCy PERSON entity; 0.7 if "with X" pattern; 0.4 if other indicator
+          locations   - 0.9 if spaCy GPE/LOC/FAC entity; 0.5 if preposition-only match
+        """
+        conf = extracted["field_confidence"]
+
+        # ── Task ──────────────────────────────────────────────────────────────
+        if extracted["task"]:
+            has_verb = any(t.pos_ == "VERB" and not t.is_stop for t in doc)
+            has_obj = any(
+                t.pos_ == "VERB" and not t.is_stop and
+                any(c.dep_ in ["dobj", "attr", "prep"] for c in t.children)
+                for t in doc
+            )
+            if has_obj:
+                conf["task"] = 0.9
+            elif has_verb:
+                conf["task"] = 0.5
+            else:
+                conf["task"] = 0.2
+
+        # ── Date ──────────────────────────────────────────────────────────────
+        if extracted["date"]:
+            conf["date"] = 0.9
+
+        # ── Time ──────────────────────────────────────────────────────────────
+        if extracted["time"]:
+            text = doc.text
+            explicit_ampm = re.search(
+                r'\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.|AM|PM)\b', text, re.IGNORECASE
+            )
+            keyword_time = re.search(r'\b(noon|midnight)\b', text, re.IGNORECASE)
+            if explicit_ampm:
+                conf["time"] = 0.9
+            elif keyword_time:
+                conf["time"] = 0.7
+            else:
+                conf["time"] = 0.4  # dateparser fallback
+
+        # ── Participants ───────────────────────────────────────────────────────
+        if extracted["participants"]:
+            spacy_persons = {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
+            with_pattern = re.compile(r'\bwith\s+([A-Z][a-z]+)\b')
+            with_names = {m.group(1) for m in with_pattern.finditer(doc.text)}
+
+            scores = []
+            for p in extracted["participants"]:
+                if p in spacy_persons:
+                    scores.append(0.9)
+                elif p in with_names:
+                    scores.append(0.7)
+                else:
+                    scores.append(0.4)
+            conf["participants"] = sum(scores) / len(scores)
+
+        # ── Locations ─────────────────────────────────────────────────────────
+        if extracted["locations"]:
+            spacy_locs = {ent.text for ent in doc.ents if ent.label_ in {"GPE", "LOC", "FAC", "ORG"}}
+            scores = [0.9 if loc in spacy_locs else 0.5 for loc in extracted["locations"]]
+            conf["locations"] = sum(scores) / len(scores)
 
 
 extractor = TaskExtractor()

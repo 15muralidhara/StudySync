@@ -179,11 +179,13 @@ app.post('/tasks/nlp', async (req, res) => {
     const fastApiResponse = await axios.post('http://localhost:8080/nlp/process', { tasks: [{ text }] });
     const extracted = fastApiResponse.data.results[0].extracted_entities;
 
-    // Check for missing fields
+    // Check for missing or low-confidence fields
+    const CONFIDENCE_THRESHOLD = 0.6;
+    const fieldConf = extracted.field_confidence || {};
     const missingFields = [];
-    if (!extracted.task) missingFields.push('task');
-    if (!extracted.date) missingFields.push('date');
-    if (!extracted.time) missingFields.push('time');
+    if (!extracted.task || (fieldConf.task !== undefined && fieldConf.task < CONFIDENCE_THRESHOLD)) missingFields.push('task');
+    if (!extracted.date || (fieldConf.date !== undefined && fieldConf.date < CONFIDENCE_THRESHOLD)) missingFields.push('date');
+    if (!extracted.time || (fieldConf.time !== undefined && fieldConf.time < CONFIDENCE_THRESHOLD)) missingFields.push('time');
     if (!extracted.participants.length) missingFields.push('participants');
     if (!extracted.locations.length) missingFields.push('locations');
 
