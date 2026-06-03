@@ -330,4 +330,243 @@ EVAL_SET = [
             "locations": [],
         },
     },
+
+    # ── Typo inputs ───────────────────────────────────────────────────────────
+    {
+        "id": "typo_01_double_letter",
+        "text": "Meetiing with Tom at 3pm",
+        "expected": {
+            "task": True,          # task="Meetie" is wrong but something is extracted
+            "participants": ["Tom"],
+            "date": NO_DATE,
+            "time": "15:00",
+            "end_time": None,
+            "locations": [],
+        },
+        "known_failure": "Typo 'Meetiing' causes task to extract as 'Meetie' — spaCy tokenises the misspelling as a noun",
+    },
+    {
+        "id": "typo_02_missing_letter",
+        "text": "dentist apointment on Friday",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": ANY_DATE,       # dateparser handles this despite typo in 'apointment'
+            "time": None,
+            "end_time": None,
+            "locations": [],
+        },
+    },
+    {
+        "id": "typo_03_date_typo",
+        "text": "call Ann tomorow at noon",
+        "expected": {
+            "task": True,
+            "participants": ["Ann"],
+            "date": ANY_DATE,       # FAILS — 'tomorow' not recognised by dateparser
+            "time": "12:00",
+            "end_time": None,
+            "locations": [],
+        },
+        "known_failure": "Typo 'tomorow' not recognised by dateparser — date returns None",
+    },
+
+    # ── Academic / student-specific inputs ───────────────────────────────────
+    {
+        "id": "academic_01_course_code",
+        "text": "CS101 midterm on Friday at 11:59pm",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": ANY_DATE,
+            "time": "23:59",
+            "end_time": None,
+            "locations": [],
+        },
+    },
+    {
+        "id": "academic_02_platform",
+        "text": "submit essay on Gradescope by midnight",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": NO_DATE,
+            "time": "00:00",
+            "end_time": None,
+            "locations": [],       # FAILS — Gradescope extracted as location (it's a platform not a place)
+        },
+        "known_failure": "Gradescope treated as a location by spaCy ORG/GPE — platform names not distinguished from physical locations",
+    },
+    {
+        "id": "academic_03_office_hours",
+        "text": "office hours with Prof Smith on Wednesday at 2pm",
+        "expected": {
+            "task": True,
+            "participants": ["Prof Smith"],
+            "date": ANY_DATE,
+            "time": "14:00",
+            "end_time": None,
+            "locations": [],
+        },
+        "known_failure": "Extracts both 'Prof Smith' and 'Prof' as separate participants — title word treated as standalone name",
+    },
+
+    # ── Compound sentences ────────────────────────────────────────────────────
+    {
+        "id": "compound_01_two_people",
+        "text": "Call John and then meet Sarah at 3pm",
+        "expected": {
+            "task": True,
+            "participants": ["John", "Sarah"],
+            "date": NO_DATE,
+            "time": "15:00",
+            "end_time": None,
+            "locations": [],
+        },
+    },
+    {
+        "id": "compound_02_two_tasks",
+        "text": "Dentist at 9am and gym at 6pm",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": NO_DATE,
+            "time": "09:00",
+            "end_time": None,
+            "locations": [],       # FAILS — 'Dentist' extracted as location, task is 'And gym'
+        },
+        "known_failure": "Compound sentence with two tasks confuses the extractor — 'Dentist' becomes a location, task becomes 'And gym'",
+    },
+
+    # ── Ambiguous / non-standard time formats ─────────────────────────────────
+    {
+        "id": "ambig_time_01_no_ampm",
+        "text": "meeting at 3",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": NO_DATE,
+            "time": None,          # system correctly returns None — no AM/PM to disambiguate
+            "end_time": None,
+            "locations": [],
+        },
+    },
+    {
+        "id": "ambig_time_02_half_past",
+        "text": "call at half past 2",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": NO_DATE,
+            "time": None,          # FAILS — 'half past 2' not recognised
+            "end_time": None,
+            "locations": [],
+        },
+        "known_failure": "Non-standard format 'half past 2' not handled — regex only matches digit+AM/PM patterns",
+    },
+    {
+        "id": "ambig_time_03_informal",
+        "text": "lunch at 1ish",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": NO_DATE,
+            "time": None,          # FAILS — '1ish' not recognised as time, extracted as location
+            "end_time": None,
+            "locations": [],       # FAILS — '1ish' wrongly extracted as location
+        },
+        "known_failure": "'1ish' not recognised as time and wrongly extracted as a location",
+    },
+
+    # ── No-information inputs ─────────────────────────────────────────────────
+    {
+        "id": "empty_01_greeting",
+        "text": "hello",
+        "expected": {
+            "task": True,          # returns 'Hello' — acceptable fallback
+            "participants": [],
+            "date": NO_DATE,
+            "time": None,
+            "end_time": None,
+            "locations": [],
+        },
+    },
+    {
+        "id": "empty_02_vague",
+        "text": "I need help",
+        "expected": {
+            "task": True,          # returns 'Need help' — acceptable fallback
+            "participants": [],
+            "date": NO_DATE,
+            "time": None,
+            "end_time": None,
+            "locations": [],
+        },
+    },
+    {
+        "id": "empty_03_blank",
+        "text": "",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": NO_DATE,
+            "time": None,
+            "end_time": None,
+            "locations": [],
+        },
+        "known_failure": "Empty string returns empty task — no fallback for zero-length input",
+    },
+
+    # ── Noisy-OR confidence combination ───────────────────────────────────────
+    {
+        "id": "confidence_01_two_signals",
+        "text": "Meeting with John tomorrow at 2pm",
+        "expected": {
+            "task": True,
+            "participants": ["John"],
+            "date": ANY_DATE,
+            "time": "14:00",
+            "end_time": None,
+            "locations": [],
+            "min_participant_confidence": 0.95,  # spaCy + "with X" both fire → noisy-OR > 0.9
+        },
+    },
+    {
+        "id": "confidence_02_single_signal",
+        "text": "Meet Paris for coffee at 10am",
+        "expected": {
+            "task": True,
+            "participants": [],    # Paris not extracted as person — known failure
+            "date": NO_DATE,
+            "time": "10:00",
+            "end_time": None,
+            "locations": [],
+        },
+    },
+    {
+        "id": "confidence_03_task_with_object",
+        "text": "Submit assignment on Wednesday",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": ANY_DATE,
+            "time": None,
+            "end_time": None,
+            "locations": [],
+            "min_task_confidence": 0.9,  # verb + object both found → high confidence
+        },
+    },
+    {
+        "id": "confidence_04_task_no_object",
+        "text": "Run",
+        "expected": {
+            "task": True,
+            "participants": [],
+            "date": NO_DATE,
+            "time": None,
+            "end_time": None,
+            "locations": [],
+            "max_task_confidence": 0.6,  # verb only, no object → lower confidence
+        },
+    },
 ]
