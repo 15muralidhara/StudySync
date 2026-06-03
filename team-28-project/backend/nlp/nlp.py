@@ -488,21 +488,31 @@ class TaskExtractor:
                             extracted["participants"].append(potential_name)
 
 
+    @staticmethod
+    def _noisy_or(evidence_weights):
+        """
+        Combine independent evidence weights using noisy-OR.
+        More agreeing signals always increases the score.
+        e.g. [0.9, 0.7] -> 1 - (0.1 * 0.3) = 0.97
+        """
+        if not evidence_weights:
+            return 0.0
+        result = 1.0
+        for w in evidence_weights:
+            result *= (1.0 - w)
+        return min(1.0, 1.0 - result)
+
     def _compute_confidence(self, doc, extracted):
         """
-        Assign a confidence score (0.0–1.0) per field based on how it was extracted.
-
-        Rules:
-          task        - 0.9 if a verb+object found; 0.5 if verb-only; 0.2 if full-text fallback
-          date        - 0.9 if explicit day/keyword matched; 0.0 if not found
-          time        - 0.9 if AM/PM explicit; 0.7 if noon/midnight keyword; 0.4 if dateparser fallback
-          participants- 0.9 if spaCy PERSON entity; 0.7 if "with X" pattern; 0.4 if other indicator
-          locations   - 0.9 if spaCy GPE/LOC/FAC entity; 0.5 if preposition-only match
+        Assign a confidence score (0.0–1.0) per field using noisy-OR combination.
+        Each extraction method that fires contributes independent evidence.
+        More methods agreeing always increases the score (unlike averaging).
         """
         conf = extracted["field_confidence"]
 
         # ── Task ──────────────────────────────────────────────────────────────
         if extracted["task"]:
+            evidence = []
             has_verb = any(t.pos_ == "VERB" and not t.is_stop for t in doc)
             has_obj = any(
                 t.pos_ == "VERB" and not t.is_stop and
@@ -510,29 +520,28 @@ class TaskExtractor:
                 for t in doc
             )
             if has_obj:
-                conf["task"] = 0.9
-            elif has_verb:
-                conf["task"] = 0.5
-            else:
-                conf["task"] = 0.2
+                evidence.append(0.9)
+            if has_verb:
+                evidence.append(0.5)
+            if not evidence:
+                evidence.append(0.2)  # full-text fallback
+            conf["task"] = self._noisy_or(evidence)
 
         # ── Date ──────────────────────────────────────────────────────────────
         if extracted["date"]:
-            conf["date"] = 0.9
+            conf["date"] = 0.9  # only one extraction method for dates
 
         # ── Time ──────────────────────────────────────────────────────────────
         if extracted["time"]:
+            evidence = []
             text = doc.text
-            explicit_ampm = re.search(
-                r'\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.|AM|PM)\b', text, re.IGNORECASE
-            )
-            keyword_time = re.search(r'\b(noon|midnight)\b', text, re.IGNORECASE)
-            if explicit_ampm:
-                conf["time"] = 0.9
-            elif keyword_time:
-                conf["time"] = 0.7
-            else:
-                conf["time"] = 0.4  # dateparser fallback
+            if re.search(r'\b\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.|AM|PM)\b', text, re.IGNORECASE):
+                evidence.append(0.9)
+            if re.search(r'\b(noon|midnight)\b', text, re.IGNORECASE):
+                evidence.append(0.7)
+            if not evidence:
+                evidence.append(0.4)  # dateparser fallback
+            conf["time"] = self._noisy_or(evidence)
 
         # ── Participants ───────────────────────────────────────────────────────
         if extracted["participants"]:
@@ -542,18 +551,27 @@ class TaskExtractor:
 
             scores = []
             for p in extracted["participants"]:
+                evidence = []
                 if p in spacy_persons:
-                    scores.append(0.9)
-                elif p in with_names:
-                    scores.append(0.7)
-                else:
-                    scores.append(0.4)
+                    evidence.append(0.9)
+                if p in with_names:
+                    evidence.append(0.7)
+                if not evidence:
+                    evidence.append(0.4)  # other heuristic only
+                scores.append(self._noisy_or(evidence))
             conf["participants"] = sum(scores) / len(scores)
 
         # ── Locations ─────────────────────────────────────────────────────────
         if extracted["locations"]:
             spacy_locs = {ent.text for ent in doc.ents if ent.label_ in {"GPE", "LOC", "FAC", "ORG"}}
-            scores = [0.9 if loc in spacy_locs else 0.5 for loc in extracted["locations"]]
+            scores = []
+            for loc in extracted["locations"]:
+                evidence = []
+                if loc in spacy_locs:
+                    evidence.append(0.9)
+                else:
+                    evidence.append(0.5)  # preposition-only
+                scores.append(self._noisy_or(evidence))
             conf["locations"] = sum(scores) / len(scores)
 
 
