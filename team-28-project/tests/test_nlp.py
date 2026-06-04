@@ -229,8 +229,13 @@ def test_precision_recall_report(capsys):
 
         # Task presence
         task_total += 1
-        if result["task"] and result["task"].strip():
-            task_correct += 1
+        expects_task = exp["task"]
+        if expects_task is False:
+            if not result["task"] or not result["task"].strip():
+                task_correct += 1
+        else:
+            if result["task"] and result["task"].strip():
+                task_correct += 1
 
     with capsys.disabled():
         print("\n")
