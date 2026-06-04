@@ -41,9 +41,15 @@ def test_task_is_extracted(case):
     if is_known_failure(case):
         pytest.xfail(case["known_failure"])
     result = extract_entities(case["text"])
-    assert result["task"] is not None and result["task"].strip() != "", (
-        f"[{case['id']}] Expected a task to be extracted from: '{case['text']}'"
-    )
+    expects_task = case["expected"]["task"]
+    if expects_task is False:
+        assert not result["task"] or not result["task"].strip(), (
+            f"[{case['id']}] Expected no task, got '{result['task']}'"
+        )
+    else:
+        assert result["task"] is not None and result["task"].strip() != "", (
+            f"[{case['id']}] Expected a task to be extracted from: '{case['text']}'"
+        )
 
 
 @pytest.mark.parametrize("case", EVAL_SET, ids=[c["id"] for c in EVAL_SET])
