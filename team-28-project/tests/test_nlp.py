@@ -41,9 +41,15 @@ def test_task_is_extracted(case):
     if is_known_failure(case):
         pytest.xfail(case["known_failure"])
     result = extract_entities(case["text"])
-    assert result["task"] is not None and result["task"].strip() != "", (
-        f"[{case['id']}] Expected a task to be extracted from: '{case['text']}'"
-    )
+    expects_task = case["expected"]["task"]
+    if expects_task is False:
+        assert not result["task"] or not result["task"].strip(), (
+            f"[{case['id']}] Expected no task, got '{result['task']}'"
+        )
+    else:
+        assert result["task"] is not None and result["task"].strip() != "", (
+            f"[{case['id']}] Expected a task to be extracted from: '{case['text']}'"
+        )
 
 
 @pytest.mark.parametrize("case", EVAL_SET, ids=[c["id"] for c in EVAL_SET])
@@ -187,6 +193,7 @@ def test_precision_recall_report(capsys):
     location_metrics = EvalMetrics()
 
     time_correct = time_total = 0
+    end_time_correct = end_time_total = 0
     date_correct = date_total = 0
     task_correct = task_total = 0
 
@@ -205,6 +212,11 @@ def test_precision_recall_report(capsys):
         if result["time"] == exp["time"]:
             time_correct += 1
 
+        # End time (exact match)
+        end_time_total += 1
+        if result["end_time"] == exp["end_time"]:
+            end_time_correct += 1
+
         # Date
         date_total += 1
         ed = exp["date"]
@@ -217,18 +229,26 @@ def test_precision_recall_report(capsys):
 
         # Task presence
         task_total += 1
-        if result["task"] and result["task"].strip():
-            task_correct += 1
+        expects_task = exp["task"]
+        if expects_task is False:
+            if not result["task"] or not result["task"].strip():
+                task_correct += 1
+        else:
+            if result["task"] and result["task"].strip():
+                task_correct += 1
 
     with capsys.disabled():
         print("\n")
-        print("=" * 55)
+        print("=" * 65)
         print("  StudySync NLP — Evaluation Report")
         print(f"  Eval set size: {len(EVAL_SET)} inputs")
-        print("=" * 55)
-        print(f"  Task extraction   accuracy : {task_correct/task_total:.0%}  ({task_correct}/{task_total})")
-        print(f"  Date extraction   accuracy : {date_correct/date_total:.0%}  ({date_correct}/{date_total})")
-        print(f"  Time extraction   accuracy : {time_correct/time_total:.0%}  ({time_correct}/{time_total})")
-        print(f"  Participants      P={participant_metrics.precision:.0%}  R={participant_metrics.recall:.0%}  F1={participant_metrics.f1:.0%}")
-        print(f"  Locations         P={location_metrics.precision:.0%}  R={location_metrics.recall:.0%}  F1={location_metrics.f1:.0%}")
-        print("=" * 55)
+        print("=" * 65)
+        print(f"  {'Field':<20} {'Accuracy/P':<12} {'R':<8} {'F1/Score'}")
+        print("-" * 65)
+        print(f"  {'Task':<20} {task_correct/task_total:.0%}  ({task_correct}/{task_total})")
+        print(f"  {'Date':<20} {date_correct/date_total:.0%}  ({date_correct}/{date_total})")
+        print(f"  {'Time':<20} {time_correct/time_total:.0%}  ({time_correct}/{time_total})")
+        print(f"  {'End Time':<20} {end_time_correct/end_time_total:.0%}  ({end_time_correct}/{end_time_total})")
+        print(f"  {'Participants':<20} P={participant_metrics.precision:.0%}         R={participant_metrics.recall:.0%}     F1={participant_metrics.f1:.0%}")
+        print(f"  {'Locations':<20} P={location_metrics.precision:.0%}         R={location_metrics.recall:.0%}     F1={location_metrics.f1:.0%}")
+        print("=" * 65)

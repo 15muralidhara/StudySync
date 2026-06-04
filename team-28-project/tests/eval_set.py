@@ -507,14 +507,13 @@ EVAL_SET = [
         "id": "empty_03_blank",
         "text": "",
         "expected": {
-            "task": True,
+            "task": False,         # correct — nothing to extract from empty input
             "participants": [],
             "date": NO_DATE,
             "time": None,
             "end_time": None,
             "locations": [],
         },
-        "known_failure": "Empty string returns empty task — no fallback for zero-length input",
     },
 
     # ── Noisy-OR confidence combination ───────────────────────────────────────

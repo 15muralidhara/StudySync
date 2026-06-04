@@ -18,6 +18,10 @@ build/
 
 # Testing
 coverage/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
 
 # Misc
 *.swp
